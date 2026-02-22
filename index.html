@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -507,5 +509,45 @@
             lucide.createIcons();
         }
     </script>
+<script>
+  // 1. CONFIGURACIÓN (Aquí debes poner tus claves de Firebase más adelante)
+  const firebaseConfig = {
+    apiKey: "BEyicJ9nZxnbPgo4OVR8HhosOOvNqupQdfn--JQrS0rOaT_FnSlxBremRfcTvoY1uzVb8D-16-uWU6ozjEdl_sQ",
+    authDomain: "TU_PROYECTO.firebaseapp.com",
+    databaseURL: "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+    projectId: "TU_PROYECTO",
+    storageBucket: "TU_PROYECTO.appspot.com",
+    messagingSenderId: "NUMERO",
+    appId: "ID_DE_APP"
+  };
+
+  // Inicializar Firebase
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
+
+  // 2. GUARDAR DATOS: Escucha cuando alguien deja de escribir en una casilla
+  document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('blur', (e) => {
+      const idCasilla = e.target.id;
+      const valor = e.target.value;
+      
+      // Guarda en la "nube" con el ID de la casilla
+      database.ref('limpieza/' + idCasilla).set(valor);
+    });
+  });
+
+  // 3. LEER EN TIEMPO REAL: Actualiza la pantalla de todos los hermanos
+  database.ref('limpieza').on('value', (snapshot) => {
+    const datos = snapshot.val();
+    if (datos) {
+      for (const id en datos) {
+        const elemento = document.getElementById(id);
+        if (elemento) {
+          elemento.value = datos[id];
+        }
+      }
+    }
+  });
+</script>
 </body>
 </html>
