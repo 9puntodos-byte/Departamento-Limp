@@ -115,8 +115,19 @@ export default function App() {
   // Escuchar cambios en tiempo real desde Firebase
   useEffect(() => {
     const dataRef = ref(db, 'cleaning_app_data');
+    
+    // Timeout de seguridad: si en 5 segundos no hay respuesta, forzamos el inicio
+    const timeout = setTimeout(() => {
+      if (isLoading) {
+        console.warn("Firebase timeout: Iniciando con datos locales");
+        setIsLoading(false);
+      }
+    }, 5000);
+
     const unsubscribe = onValue(dataRef, (snapshot) => {
+      clearTimeout(timeout);
       const val = snapshot.val();
+      
       if (val) {
         const zones = val.zones ? (Array.isArray(val.zones) ? val.zones : Object.values(val.zones)) : data.zones;
         setData({
@@ -124,11 +135,22 @@ export default function App() {
           zones: zones as Zone[],
           dailyStatus: val.dailyStatus || {}
         });
+      } else {
+        // Si la base de datos está vacía, la inicializamos con los datos por defecto
+        console.log("Base de datos vacía. Inicializando...");
+        set(dataRef, data);
       }
       setIsLoading(false);
+    }, (error) => {
+      clearTimeout(timeout);
+      console.error("Error de Firebase:", error);
+      setIsLoading(false); // Iniciamos con datos locales en caso de error
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const currentDay = DAYS[dayOffset];
