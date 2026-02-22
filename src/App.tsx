@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Info, 
+  Download,
   ChevronLeft, 
   ChevronRight, 
   Plus, 
@@ -238,6 +239,13 @@ export default function App() {
               className="text-xs bg-amber-100 text-amber-700 px-3 py-2 rounded-lg font-bold hover:bg-amber-200 transition-colors flex items-center gap-2"
             >
               <Info size={14} /> <span className="hidden sm:inline">GUÍA</span>
+            </button>
+            <button 
+              onClick={() => alert('Para descargar el proyecto y subirlo a GitHub:\n\n1. Haz clic en el icono de "Download" (bandeja con flecha) en la esquina superior derecha de la interfaz de Google AI Studio.\n2. Descomprime el ZIP en tu computadora.\n3. Abre una terminal en esa carpeta y usa los comandos: npm install, npm run build y npm run deploy.')}
+              className="text-xs bg-gray-100 text-gray-600 px-3 py-2 rounded-lg font-bold hover:bg-gray-200 transition-colors"
+              title="Instrucciones para descargar"
+            >
+              <Download size={14} />
             </button>
           </div>
         </div>
