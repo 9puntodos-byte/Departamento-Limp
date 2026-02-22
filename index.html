@@ -271,29 +271,27 @@
         </div>
     </div>
 
-    <!-- FIREBASE SDK -->
+    <!-- Base de Datos Descentralizada (Sencilla, sin cuentas) -->
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        // IDENTIFICADOR ÚNICO PARA TU ASAMBLEA
+        // Puedes cambiar este nombre por algo más largo y secreto para que sea "privado"
+        const APP_ID = 'jw_asamblea_limpieza_2026_secreto_v1';
+        
+        // Conectar a la red de sincronización
+        const gun = Gun([
+            'https://gun-manhattan.herokuapp.com/gun',
+            'https://gun-relay.herokuapp.com/gun'
+        ]);
+        const app = gun.get(APP_ID);
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCqyCcs2R2e7AegGjvFAwG98wlamtbHvZY",
-            authDomain: "bard-frontend.firebaseapp.com",
-            projectId: "bard-frontend",
-            storageBucket: "bard-frontend.firebasestorage.app",
-            messagingSenderId: "175205271074",
-            appId: "1:175205271074:web:2b7bd4d34d33bf38e6ec7b"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
         const STORAGE_KEY = 'jw_limpieza_local_backup';
 
         // ESTADO GLOBAL
         let dayOffset = 1;
         const DAYS = ['Viernes 6', 'Sábado 7', 'Domingo 8'];
         
-        // Cargar primero de LocalStorage para rapidez
         let appData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
             leads: { banos: '', telBanos: '', auditorio: '', telAuditorio: '', madres: '', telMadres: '' },
             zones: [
@@ -326,37 +324,30 @@
             ]
         };
 
-        // ESCUCHAR CAMBIOS DE FIREBASE
-        const dataRef = ref(db, 'cleaning_app_data');
-        
-        const safetyTimeout = setTimeout(() => {
-            document.getElementById('loadingScreen').style.display = 'none';
-            render();
-        }, 4000);
-
-        onValue(dataRef, (snapshot) => {
-            clearTimeout(safetyTimeout);
-            const val = snapshot.val();
-            if (val) {
-                appData = {
-                    leads: val.leads || appData.leads,
-                    zones: val.zones ? (Array.isArray(val.zones) ? val.zones : Object.values(val.zones)) : appData.zones,
-                    dailyStatus: val.dailyStatus || {}
-                };
-                // Sincronizar backup local
+        // ESCUCHAR CAMBIOS EN TIEMPO REAL (GUN.JS)
+        app.on((data) => {
+            if (data) {
+                // Gun.js devuelve los datos un poco diferentes, los procesamos
+                if (data.leads) appData.leads = JSON.parse(data.leads);
+                if (data.zones) appData.zones = JSON.parse(data.zones);
+                if (data.dailyStatus) appData.dailyStatus = JSON.parse(data.dailyStatus);
+                
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
-            } else {
-                set(dataRef, appData);
+                render();
             }
-            render();
             document.getElementById('loadingScreen').style.display = 'none';
         });
+
+        // Timeout de seguridad
+        setTimeout(() => {
+            document.getElementById('loadingScreen').style.display = 'none';
+            render();
+        }, 3000);
 
         // FUNCIONES DE ACTUALIZACIÓN
         window.updateLead = (key, value) => {
             appData.leads[key] = value;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
-            update(ref(db, 'cleaning_app_data/leads'), { [key]: value });
+            saveToCloud();
         };
 
         window.updateStatus = (zoneId, field, value) => {
@@ -365,39 +356,43 @@
             if(!appData.dailyStatus[dayKey][zoneId]) appData.dailyStatus[dayKey][zoneId] = {status:'pendiente', notes:''};
             
             appData.dailyStatus[dayKey][zoneId][field] = value;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
-            
-            update(ref(db, `cleaning_app_data/dailyStatus/${dayKey}/${zoneId}`), { [field]: value });
+            saveToCloud();
         };
+
+        function saveToCloud() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+            // Gun.js prefiere strings para objetos complejos
+            app.put({
+                leads: JSON.stringify(appData.leads),
+                zones: JSON.stringify(appData.zones),
+                dailyStatus: JSON.stringify(appData.dailyStatus)
+            });
+        }
 
         window.manualSave = () => {
             const btn = document.getElementById('saveBtn');
             btn.classList.add('save-active');
-            
-            // Forzar subida completa por seguridad
-            set(dataRef, appData).then(() => {
-                setTimeout(() => {
-                    btn.classList.remove('save-active');
-                    alert("¡Información guardada y sincronizada con éxito!");
-                }, 500);
-            });
+            saveToCloud();
+            setTimeout(() => {
+                btn.classList.remove('save-active');
+                alert("¡Sincronización forzada con éxito!");
+            }, 500);
         };
 
         window.addZone = () => {
             const name = document.getElementById('newZoneName').value;
             const type = document.getElementById('newZoneType').value;
             if (!name) return;
-            const newZone = { id: Date.now(), name, type };
-            const newZones = [...appData.zones, newZone];
-            set(ref(db, 'cleaning_app_data/zones'), newZones);
+            appData.zones.push({ id: Date.now(), name, type });
+            saveToCloud();
             document.getElementById('newZoneName').value = '';
             toggleModal('addZoneModal', false);
         };
 
         window.deleteZone = (id) => {
-            if (confirm('¿Eliminar esta zona permanentemente?')) {
-                const filtered = appData.zones.filter(z => z.id !== id);
-                set(ref(db, 'cleaning_app_data/zones'), filtered);
+            if (confirm('¿Eliminar esta zona?')) {
+                appData.zones = appData.zones.filter(z => z.id !== id);
+                saveToCloud();
             }
         };
 
@@ -430,34 +425,33 @@
                 text += `${icon} *${z.name}*: ${s.status.toUpperCase()}\n${s.notes ? `   _${s.notes}_\n` : ''}`;
             });
             navigator.clipboard.writeText(text);
-            alert('Resumen copiado al portapapeles.');
+            alert('Resumen copiado!');
         };
 
-        // RENDERIZADO
         function render() {
             const leadsHtml = `
                 <div class="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
                     <label class="text-[10px] font-bold text-blue-600 uppercase block mb-1">Superintendente Baños</label>
-                    <input type="text" value="${appData.leads.banos || ''}" oninput="updateLead('banos', this.value)" placeholder="Nombre" class="w-full bg-white border border-gray-200 p-2 rounded-lg text-sm font-bold outline-none mb-2 focus:ring-2 focus:ring-blue-200">
+                    <input type="text" value="${appData.leads.banos || ''}" onblur="updateLead('banos', this.value)" placeholder="Nombre" class="w-full bg-white border border-gray-200 p-2 rounded-lg text-sm font-bold outline-none mb-2 focus:ring-2 focus:ring-blue-200">
                     <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
                         <i data-lucide="phone" size="12" class="text-gray-300"></i>
-                        <input type="tel" value="${appData.leads.telBanos || ''}" oninput="updateLead('telBanos', this.value)" placeholder="Teléfono" class="w-full text-xs outline-none">
+                        <input type="tel" value="${appData.leads.telBanos || ''}" onblur="updateLead('telBanos', this.value)" placeholder="Teléfono" class="w-full text-xs outline-none">
                     </div>
                 </div>
                 <div class="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
                     <label class="text-[10px] font-bold text-emerald-600 uppercase block mb-1">Encargado Auditorio</label>
-                    <input type="text" value="${appData.leads.auditorio || ''}" oninput="updateLead('auditorio', this.value)" placeholder="Nombre" class="w-full bg-white border border-gray-200 p-2 rounded-lg text-sm font-bold outline-none mb-2 focus:ring-2 focus:ring-emerald-200">
+                    <input type="text" value="${appData.leads.auditorio || ''}" onblur="updateLead('auditorio', this.value)" placeholder="Nombre" class="w-full bg-white border border-gray-200 p-2 rounded-lg text-sm font-bold outline-none mb-2 focus:ring-2 focus:ring-emerald-200">
                     <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
                         <i data-lucide="phone" size="12" class="text-gray-300"></i>
-                        <input type="tel" value="${appData.leads.telAuditorio || ''}" oninput="updateLead('telAuditorio', this.value)" placeholder="Teléfono" class="w-full text-xs outline-none">
+                        <input type="tel" value="${appData.leads.telAuditorio || ''}" onblur="updateLead('telAuditorio', this.value)" placeholder="Teléfono" class="w-full text-xs outline-none">
                     </div>
                 </div>
                 <div class="p-3 bg-purple-50/50 rounded-xl border border-purple-100">
                     <label class="text-[10px] font-bold text-purple-600 uppercase block mb-1">Sala Madres</label>
-                    <input type="text" value="${appData.leads.madres || ''}" oninput="updateLead('madres', this.value)" placeholder="Nombre" class="w-full bg-white border border-gray-200 p-2 rounded-lg text-sm font-bold outline-none mb-2 focus:ring-2 focus:ring-purple-200">
+                    <input type="text" value="${appData.leads.madres || ''}" onblur="updateLead('madres', this.value)" placeholder="Nombre" class="w-full bg-white border border-gray-200 p-2 rounded-lg text-sm font-bold outline-none mb-2 focus:ring-2 focus:ring-purple-200">
                     <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
                         <i data-lucide="phone" size="12" class="text-gray-300"></i>
-                        <input type="tel" value="${appData.leads.telMadres || ''}" oninput="updateLead('telMadres', this.value)" placeholder="Teléfono" class="w-full text-xs outline-none">
+                        <input type="tel" value="${appData.leads.telMadres || ''}" onblur="updateLead('telMadres', this.value)" placeholder="Teléfono" class="w-full text-xs outline-none">
                     </div>
                 </div>
             `;
@@ -494,7 +488,7 @@
                             </div>
                         </td>
                         <td class="px-6 py-4">
-                            <textarea oninput="updateStatus(${zone.id}, 'notes', this.value)" placeholder="Voluntarios..." class="w-full bg-transparent border-b border-gray-100 text-xs py-1 outline-none focus:border-jw-blue resize-none h-24">${s.notes || ''}</textarea>
+                            <textarea onblur="updateStatus(${zone.id}, 'notes', this.value)" placeholder="Voluntarios..." class="w-full bg-transparent border-b border-gray-100 text-xs py-1 outline-none focus:border-jw-blue resize-none h-24">${s.notes || ''}</textarea>
                         </td>
                         <td class="px-6 py-4 text-center">
                             <select onchange="updateStatus(${zone.id}, 'status', this.value)" class="text-[9px] font-bold uppercase px-2 py-1 rounded-full outline-none status-${s.status}">
