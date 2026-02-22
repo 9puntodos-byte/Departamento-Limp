@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-jw-blue: #4a6da7;
+  --color-jw-blue-dark: #3a5a8f;
+}
+
+@layer base {
+  body {
+    @apply bg-gray-100 text-gray-800 min-h-screen font-sans;
+  }
+}
+
+.status-pendiente { @apply bg-red-100 text-red-800 border border-red-200; }
+.status-progreso { @apply bg-amber-100 text-amber-800 border border-amber-200; }
+.status-completado { @apply bg-emerald-100 text-emerald-800 border border-emerald-200; }
+
+.cat-limpieza { @apply bg-blue-100 text-blue-700; }
+.cat-baños { @apply bg-red-100 text-red-700; }
+.cat-madres { @apply bg-purple-100 text-purple-700; }
